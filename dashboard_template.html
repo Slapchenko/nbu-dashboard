@@ -1,0 +1,1444 @@
+<!DOCTYPE html>
+<html lang="uk" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Банківський дашборд — Оксі Банк vs ринок</title>
+<style>
+  :root{
+    color-scheme: light;
+    --surface-1:#fcfcfb; --plane:#f9f9f7;
+    --text-primary:#0b0b0b; --text-secondary:#52514e; --muted:#898781;
+    --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,0.10);
+    --series-1:#2a78d6; --series-2:#eb6834; --series-3:#1baf7a;
+    --series-4:#eda100; --series-5:#e87ba4; --series-6:#008300;
+    --seq-1:#cde2fb; --seq-2:#9ec5f4; --seq-3:#5598e7; --seq-4:#2a78d6; --seq-5:#184f95;
+    --neutral-mark:#c3c2b7;
+    --good:#0ca30c; --critical:#d03b3b; --warning:#fab219;
+    --up:#006300; --down:#d03b3b;
+  }
+  :root[data-theme="dark"]{
+    color-scheme: dark;
+    --surface-1:#1a1a19; --plane:#0d0d0d;
+    --text-primary:#ffffff; --text-secondary:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,0.10);
+    --series-1:#3987e5; --series-2:#d95926; --series-3:#199e70;
+    --series-4:#c98500; --series-5:#d55181; --series-6:#008300;
+    --seq-1:#184f95; --seq-2:#256abf; --seq-3:#3987e5; --seq-4:#6da7ec; --seq-5:#b7d3f6;
+    --neutral-mark:#383835;
+    --good:#0ca30c; --critical:#d03b3b; --warning:#fab219;
+    --up:#0ca30c; --down:#e66767;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--plane);color:var(--text-primary);
+       font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;line-height:1.45}
+  .wrap{max-width:1280px;margin:0 auto;padding:20px 20px 64px}
+  header.top{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between;margin-bottom:6px}
+  h1{font-size:22px;margin:0;font-weight:650;letter-spacing:-0.01em}
+  #logo{max-height:44px;max-width:260px;width:auto;height:auto;object-fit:contain;flex:none}
+  :root[data-theme="dark"] #logo{background:#fff;padding:5px 9px;border-radius:7px}
+
+  /* ---- довідка для правління (друк / збереження в PDF) ---- */
+  #board-overlay{position:fixed;inset:0;background:rgba(11,11,11,.55);z-index:80;overflow:auto;padding:0 0 40px}
+  .board-bar{position:sticky;top:0;display:flex;gap:10px;align-items:center;background:var(--surface-1);
+    border-bottom:1px solid var(--border);padding:10px 16px;z-index:2}
+  .board-page{width:210mm;min-height:297mm;margin:18px auto;background:#fff;color:#0b0b0b;
+    padding:14mm 14mm 10mm;box-shadow:0 10px 40px rgba(0,0,0,.3)}
+  .board-head{display:flex;align-items:center;gap:14px;border-bottom:2px solid #0b0b0b;padding-bottom:10px}
+  #b-logo{max-height:40px;max-width:230px}
+  .board-title{font-size:17px;font-weight:700}
+  .board-sub{font-size:11.5px;color:#52514e;margin-top:2px}
+  .board-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}
+  .board-tiles .t{border:1px solid rgba(11,11,11,.12);border-radius:8px;padding:8px 10px}
+  .board-tiles .t .l{font-size:10.5px;color:#52514e}
+  .board-tiles .t .v{font-size:19px;font-weight:650;margin:2px 0 1px}
+  .board-tiles .t .m{font-size:10.5px;color:#52514e}
+  .board-charts{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .board-h{font-size:11.5px;font-weight:650;margin:8px 0 2px}
+  .board-find{margin:4px 0 0;padding-left:18px;font-size:11.5px;line-height:1.55}
+  .board-find li{margin-bottom:5px}
+  .board-find .tag{font-size:9.5px;font-weight:700;border-radius:4px;padding:1px 5px;margin-right:6px;
+    color:#fff;vertical-align:1px}
+  .board-foot{margin-top:12px;padding-top:8px;border-top:1px solid rgba(11,11,11,.14);
+    font-size:9.5px;color:#898781}
+  .board-page .tick,.board-page .dlabel{fill:#52514e}
+  .board-page .gridline{stroke:#e1e0d9}.board-page .axisline{stroke:#c3c2b7}
+  /* Режим друку вмикається класом на <html>: так поведінка однакова
+     і при кнопці «Зберегти як PDF», і при Cmd+P з клавіатури. */
+  html.printing body{background:#fff}
+  html.printing .wrap,html.printing .tooltip,html.printing .board-bar{display:none !important}
+  html.printing #board-overlay{position:static;background:none;padding:0;overflow:visible}
+  html.printing .board-page{width:auto;min-height:0;margin:0;padding:0;box-shadow:none}
+  @media print{
+    body{background:#fff}
+    .wrap,.tooltip,.board-bar{display:none !important}
+    #board-overlay{position:static;background:none;padding:0;overflow:visible}
+    .board-page{width:auto;min-height:0;margin:0;padding:0;box-shadow:none}
+  }
+  @page{size:A4 portrait;margin:12mm}
+  .sub{color:var(--text-secondary);font-size:13px;margin-top:2px}
+  .demo-banner{background:#fff4d6;border:1px solid #f0c34a;color:#4a3a05;padding:10px 14px;
+    border-radius:8px;margin:12px 0;font-size:13px}
+  :root[data-theme="dark"] .demo-banner{background:#332a10;border-color:#7a6220;color:#f6e2a8}
+  .filters{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:14px 0 18px;
+    background:var(--surface-1);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+  .filters label{color:var(--text-secondary);font-size:12px;margin-right:4px}
+  /* перемикач періодичності: дві кнопки замість випадаючого списку */
+  .seg{display:inline-flex;border:1px solid var(--border);border-radius:7px;overflow:hidden}
+  .seg button{border:0;border-radius:0;background:var(--surface-1);color:var(--text-secondary);padding:6px 12px}
+  .seg button+button{border-left:1px solid var(--border)}
+  .seg button.on{background:var(--series-1);color:#fff;font-weight:600}
+  select,button{font:inherit;font-size:13px;padding:6px 10px;border-radius:7px;
+    border:1px solid var(--border);background:var(--surface-1);color:var(--text-primary)}
+  button{cursor:pointer}
+  .grid{display:grid;gap:14px}
+  .tiles{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+  .card{background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+  .tile .lbl{color:var(--text-secondary);font-size:12px}
+  .tile .val{font-size:26px;font-weight:600;margin:4px 0 2px;letter-spacing:-0.02em}
+  #systiles .tile .val{font-size:22px;white-space:nowrap}
+  .tile .unit{font-size:12px;color:var(--muted);font-weight:400}
+  .tile .meta{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--text-secondary);margin-top:6px}
+  .rankbadge{display:inline-flex;align-items:center;gap:5px;background:var(--plane);
+    border:1px solid var(--border);border-radius:999px;padding:2px 9px;font-size:12px;font-weight:600}
+  .up{color:var(--up)} .down{color:var(--down)}
+  .two{grid-template-columns:1fr 1fr}
+  @media(max-width:900px){.two{grid-template-columns:1fr}}
+  h2{font-size:15px;margin:0 0 2px;font-weight:600}
+  .cap{color:var(--text-secondary);font-size:12px;margin:0 0 10px}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text-secondary);margin:2px 0 8px}
+  .legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+  svg{display:block;width:100%;overflow:visible}
+  .tick{fill:var(--muted);font-size:11px}
+  .gridline{stroke:var(--grid);stroke-width:1}
+  .axisline{stroke:var(--axis);stroke-width:1}
+  .dlabel{fill:var(--text-secondary);font-size:11px;font-variant-numeric:tabular-nums}
+  table{border-collapse:collapse;width:100%;font-size:12.5px;font-variant-numeric:tabular-nums}
+  th,td{padding:7px 8px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap}
+  th:first-child,td:first-child{text-align:left;white-space:normal}
+  thead th{color:var(--text-secondary);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;
+    user-select:none;position:sticky;top:0;background:var(--surface-1);z-index:2;
+    box-shadow:inset 0 -1px 0 var(--border)}
+  tr.focus td{background:color-mix(in srgb, var(--series-1) 14%, transparent);font-weight:600}
+  tr.focus td:first-child{box-shadow:inset 3px 0 0 var(--series-1)}
+  details{margin-top:10px}
+  summary{cursor:pointer;color:var(--text-secondary);font-size:12px}
+  .tbl-wrap{max-height:320px;overflow:auto;margin-top:8px}
+  .tooltip{position:fixed;pointer-events:none;background:var(--surface-1);border:1px solid var(--border);
+    border-radius:8px;padding:8px 10px;font-size:12px;box-shadow:0 6px 22px rgba(0,0,0,.14);opacity:0;
+    transition:opacity .09s;z-index:50;max-width:280px}
+  .tooltip b{font-weight:600}
+  .tt-row{display:flex;justify-content:space-between;gap:14px;font-variant-numeric:tabular-nums}
+  .tt-row i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px}
+  footer{color:var(--muted);font-size:12px;margin-top:26px;line-height:1.6}
+  a{color:var(--series-1)}
+  .pill{font-size:11px;color:var(--text-secondary);background:var(--plane);border:1px solid var(--border);
+    border-radius:999px;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div style="display:flex;align-items:center;gap:14px">
+      <img id="logo" alt="" hidden>
+      <div>
+        <h1 id="title">Банківська система України — позиція банку</h1>
+        <div class="sub" id="subtitle"></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto">
+      <span class="pill" id="stamp"></span>
+      <button id="export" hidden>Завантажити звіт</button>
+      <button id="theme">Темна тема</button>
+    </div>
+  </header>
+
+  <div id="demo" class="demo-banner" hidden>
+    <b>Це демонстраційні дані.</b> Цифри згенеровані для перевірки роботи дашборду.
+    Щоб побачити реальні дані НБУ, виконайте <code>python3 nbu_fetch.py</code>, а потім
+    <code>python3 build_dashboard.py</code>.
+  </div>
+
+  <div class="filters">
+    <span><label for="bank">Банк</label><select id="bank"></select></span>
+    <span><label for="date">Звітна дата</label><select id="date"></select></span>
+    <span id="wrap-period" hidden class="seg"><button data-p="m" class="on">місяць</button><button data-p="q">квартал</button></span>
+    <span><label for="metric">Показник</label><select id="metric"></select></span>
+    <span><label for="peern">Пір-група</label><select id="peern"></select></span>
+  </div>
+
+  <section class="grid tiles" id="tiles"></section>
+
+  <section class="card" style="margin-top:14px">
+    <h2>Топ-25 банків на звітну дату</h2>
+    <p class="cap" id="top-cap"></p>
+    <div id="chart-top"></div>
+    <details><summary>Показати всі банки таблицею</summary><div class="tbl-wrap" id="tbl-top"></div></details>
+  </section>
+
+  <!-- 1. Де ми зараз -->
+  <section class="grid two" style="margin-top:14px">
+    <div class="card">
+      <h2>Місце в рейтингу на кожну звітну дату</h2>
+      <p class="cap" id="rank-cap"></p>
+      <div id="chart-rank"></div>
+      <details><summary>Показати таблицю</summary><div class="tbl-wrap" id="tbl-rank"></div></details>
+    </div>
+    <div class="card">
+      <h2 id="share-title">Динаміка показника</h2>
+      <p class="cap" id="share-cap"></p>
+      <div id="chart-share"></div>
+      <details><summary>Показати таблицю</summary><div class="tbl-wrap" id="tbl-share"></div></details>
+    </div>
+  </section>
+
+  <!-- 2. Що змінилось у рейтингу -->
+  <section class="card" style="margin-top:14px" id="sec-movers" hidden>
+    <h2>Хто кого обігнав</h2>
+    <p class="cap" id="mov-cap"></p>
+    <div class="grid two" id="movers"></div>
+  </section>
+
+  <!-- 3. Як ростемо відносно ринку -->
+  <section class="card" style="margin-top:14px">
+    <h2>Динаміка проти конкурентів і системи</h2>
+    <p class="cap" id="idx-cap"></p>
+    <div class="legend" id="idx-legend"></div>
+    <div id="chart-index"></div>
+    <details><summary>Показати таблицю</summary><div class="tbl-wrap" id="tbl-index"></div></details>
+  </section>
+
+  <section class="card" style="margin-top:14px">
+    <h2>Приріст рік до року в пір-групі</h2>
+    <p class="cap" id="growth-cap"></p>
+    <div id="chart-growth"></div>
+  </section>
+
+  <!-- 4. З ким ми поруч -->
+  <section class="card" style="margin-top:14px">
+    <h2>Пір-група: банки близького розміру</h2>
+    <p class="cap" id="peer-cap"></p>
+    <div class="tbl-wrap" id="tbl-peers"></div>
+  </section>
+
+  <section class="card" style="margin-top:14px" id="sec-compare" hidden>
+    <h2>Порівняння лоб у лоб</h2>
+    <p class="cap" id="cmp-cap"></p>
+    <div style="margin:6px 0 10px"><label for="rival">Конкурент</label> <select id="rival"></select></div>
+    <div class="tbl-wrap" style="max-height:460px" id="tbl-compare"></div>
+  </section>
+
+  <!-- 5. Чому такий результат -->
+  <section class="grid two" style="margin-top:14px" id="sec-waterfall" hidden>
+    <div class="card">
+      <h2>З чого склався фінансовий результат</h2>
+      <p class="cap" id="wf-cap"></p>
+      <div id="chart-waterfall"></div>
+      <details><summary>Показати таблицю</summary><div class="tbl-wrap" id="tbl-wf"></div></details>
+    </div>
+    <div class="card" id="card-spread">
+      <h2>Дохідність активів і вартість фондування</h2>
+      <p class="cap" id="spread-cap"></p>
+      <div class="legend" id="spread-legend"></div>
+      <div id="chart-spread"></div>
+      <details><summary>Показати таблицю</summary><div class="tbl-wrap" id="tbl-spread"></div></details>
+    </div>
+  </section>
+
+  <section class="grid two" style="margin-top:14px" id="sec-market" hidden>
+    <div class="card">
+      <h2>Ціна ресурсів проти ринку</h2>
+      <p class="cap" id="mkt-cap"></p>
+      <div class="legend" id="mkt-legend"></div>
+      <div id="chart-market"></div>
+      <details><summary>Показати таблицю</summary><div class="tbl-wrap" id="tbl-market"></div></details>
+    </div>
+    <div class="card">
+      <h2>Якість кредитного портфеля</h2>
+      <p class="cap" id="npl-cap"></p>
+      <div class="legend" id="npl-legend"></div>
+      <div id="chart-npl"></div>
+      <details><summary>Показати таблицю</summary><div class="tbl-wrap" id="tbl-npl"></div></details>
+    </div>
+  </section>
+
+  <section class="card" style="margin-top:14px" id="sec-fx" hidden>
+    <h2>Валюта: структура і курсовий ефект</h2>
+    <p class="cap" id="fx-cap"></p>
+    <div class="legend" id="fx-legend"></div>
+    <div id="chart-fx"></div>
+    <details><summary>Показати таблицю</summary><div class="tbl-wrap" id="tbl-fx"></div></details>
+  </section>
+
+  <!-- 6. Як влаштований баланс -->
+  <section class="grid two" style="margin-top:14px" id="sec-structure" hidden>
+    <div class="card">
+      <h2>Структура активів проти пір-групи</h2>
+      <p class="cap" id="str-cap-a"></p>
+      <div id="chart-structure-a"></div>
+      <div class="legend" id="leg-structure-a"></div>
+    </div>
+    <div class="card">
+      <h2>Структура пасивів проти пір-групи</h2>
+      <p class="cap" id="str-cap-l"></p>
+      <div id="chart-structure-l"></div>
+      <div class="legend" id="leg-structure-l"></div>
+    </div>
+  </section>
+
+  <!-- 7. Позабаланс -->
+  <section class="grid two" style="margin-top:14px" id="sec-guar" hidden>
+    <div class="card">
+      <h2>Портфель наданих гарантій</h2>
+      <p class="cap" id="guar-cap"></p>
+      <div id="chart-guar"></div>
+      <details><summary>Показати таблицю</summary><div class="tbl-wrap" id="tbl-guar"></div></details>
+    </div>
+    <div class="card">
+      <h2>Ринок гарантій: топ-15 банків</h2>
+      <p class="cap" id="guar-top-cap"></p>
+      <div id="chart-guar-top"></div>
+      <details><summary>Показати всі банки таблицею</summary><div class="tbl-wrap" id="tbl-guar-top"></div></details>
+    </div>
+  </section>
+
+  <section class="card" style="margin-top:14px">
+    <h2>Банківська система України загалом</h2>
+    <p class="cap">Агрегати НБУ (набір даних «Основні показники діяльності банків України»).</p>
+    <div class="grid tiles" id="systiles"></div>
+  </section>
+
+  <footer>
+    Джерело: Національний банк України, відкриті дані (<code>banksfinrep</code> — показники по кожному банку,
+    <code>basindbank</code> — агрегат по системі). Суми — млн грн, якщо не вказано інше.
+    Рейтинг рахується серед усіх банків, що подали відповідний показник на звітну дату.
+    ROA/ROE — розрахункові: фінансовий результат з початку року, приведений до річного виміру, до активів/капіталу.
+  </footer>
+</div>
+  <div id="board-overlay" hidden>
+    <div class="board-bar">
+      <b>Довідка для Правління</b>
+      <span style="flex:1"></span>
+      <button id="board-print">Зберегти як PDF</button>
+      <button id="board-close">Закрити</button>
+    </div>
+    <div class="board-page" id="board-page">
+      <div class="board-head">
+        <img id="b-logo" alt="" hidden>
+        <div>
+          <div class="board-title" id="b-title"></div>
+          <div class="board-sub" id="b-sub"></div>
+        </div>
+      </div>
+      <div class="board-tiles" id="b-tiles"></div>
+      <div class="board-charts">
+        <div><div class="board-h">Місце в рейтингу за чистими активами</div><div id="b-chart1"></div></div>
+        <div><div class="board-h">Динаміка проти пір-групи, індекс 100</div><div id="b-chart2"></div></div>
+      </div>
+      <div class="board-h" style="margin-top:6px">З чого склався фінансовий результат, млн грн</div>
+      <div id="b-chart3"></div>
+      <div class="board-h" style="margin-top:10px">Висновки</div>
+      <ol class="board-find" id="b-find"></ol>
+      <div class="board-foot" id="b-foot"></div>
+    </div>
+</div>
+
+<div class="tooltip" id="tt"></div>
+
+<script id="payload" type="application/json">/*__DATA__*/</script>
+<script>
+const DATA = JSON.parse(document.getElementById('payload').textContent);
+const S1='var(--series-1)', S2='var(--series-2)', S3='var(--series-3)';
+const $ = id => document.getElementById(id);
+const fmtDate = d => { const [y,m,dd]=d.split('-'); return `${dd}.${m}.${y}`; };
+
+function nf(v, dec){
+  if(v===null||v===undefined||Number.isNaN(v)) return '—';
+  return v.toLocaleString('uk-UA',{minimumFractionDigits:dec??0,maximumFractionDigits:dec??0});
+}
+function money(v){
+  if(v===null||v===undefined) return '—';
+  const a=Math.abs(v);
+  if(a>=1e6) return nf(v/1e6,2)+' трлн';
+  if(a>=1e3) return nf(v/1e3,2)+' млрд';
+  return nf(v,1)+' млн';
+}
+function pct(v,dec){ return v===null||v===undefined||!isFinite(v) ? '—' : nf(v,dec??1)+'%'; }
+function delta(v){
+  if(v===null||v===undefined||!isFinite(v)) return '<span class="muted">—</span>';
+  const cls = v>0?'up':(v<0?'down':'');
+  const sign = v>0?'▲':(v<0?'▼':'—');
+  return `<span class="${cls}">${sign} ${nf(Math.abs(v),1)}%</span>`;
+}
+
+// ---------- state
+const state = {
+  bank: DATA.focus,
+  date: DATA.dates[DATA.dates.length-1],
+  metric: DATA.metrics.find(m=>m.key==='assets') ? 'assets' : DATA.metrics[0].key,
+  peern: 12,
+  period: 'm'
+};
+
+// DATES — дати, які показуємо (усі місяці або лише квартальні).
+// Значення завжди беруться з повного місячного ряду DATA.dates.
+let DATES = DATA.dates;
+function applyPeriod(){
+  DATES = state.period==='q'
+    ? DATA.dates.filter(d=>['01','04','07','10'].includes(d.slice(5,7)))
+    : DATA.dates;
+  if(!DATES.includes(state.date)){
+    const prior=DATES.filter(d=>d<=state.date);
+    state.date = prior.length?prior[prior.length-1]:DATES[DATES.length-1];
+  }
+}
+
+// ---------- helpers over series
+const di = d => DATA.dates.indexOf(d);
+function val(metric, bank, date){
+  const s = DATA.series[metric]; if(!s) return null;
+  const arr = s[bank]; if(!arr) return null;
+  const v = arr[di(date)];
+  return (v===null||v===undefined)?null:v;
+}
+function banksWith(metric, date){
+  const s = DATA.series[metric]||{}; const i = di(date); const out=[];
+  for(const b in s){ const v=s[b][i]; if(v!==null&&v!==undefined) out.push([b,v]); }
+  return out;
+}
+// Показники-відсотки (ROA, частка непрацюючих активів) не мають ані частки ринку,
+// ані суми по системі — для них дашборд показує самі значення, а зміну — у п.п.
+const isPct = k => ((metricOf(k)||{}).type === 'pct');
+const fmtVal = (k,v) => v===null||v===undefined ? '—' : (isPct(k) ? pct(v,2) : money(v)+' грн');
+// для більшості показників № 1 — найбільше значення; для «частки непрацюючих активів»
+// краще менше, тому там № 1 — найнижчий рівень
+const lowerBetter = k => !!((metricOf(k)||{}).lowerBetter);
+function rankOf(metric, bank, date){
+  const arr = banksWith(metric,date).sort((a,b)=>lowerBetter(metric)?a[1]-b[1]:b[1]-a[1]);
+  const idx = arr.findIndex(x=>x[0]===bank);
+  return idx<0?null:{rank:idx+1, total:arr.length};
+}
+function shareOf(metric, bank, date){
+  if(isPct(metric)) return null;
+  const arr = banksWith(metric,date);
+  const tot = arr.reduce((s,x)=>s+x[1],0);
+  const v = val(metric,bank,date);
+  return (v===null||!tot)?null:100*v/tot;
+}
+// для грошових показників — приріст у %, для відсоткових — зміна в процентних пунктах
+function growth(metric, bank, date, backMonths){
+  const i = di(date)-backMonths; if(i<0) return null;
+  const prev = val(metric,bank,DATA.dates[i]); const cur = val(metric,bank,date);
+  if(prev===null||cur===null) return null;
+  if(isPct(metric)) return cur-prev;
+  // від'ємна або нульова база робить відсоток зміни беззмістовним (напр. торішній збиток)
+  if(prev<=0) return null;
+  return 100*(cur-prev)/prev;
+}
+function deltaOf(metric, v){
+  if(v===null||v===undefined||!isFinite(v)) return '<span class="muted">—</span>';
+  const good = lowerBetter(metric) ? v<0 : v>0;   // зростання NPL — це погано
+  const cls=v===0?'':(good?'up':'down'), sign=v>0?'▲':(v<0?'▼':'—');
+  return `<span class="${cls}">${sign} ${nf(Math.abs(v),1)}${isPct(metric)?' п.п.':'%'}</span>`;
+}
+// фінрезультат — наростаючим підсумком з початку року → приводимо до річного
+function annualize(v, date){
+  if(v===null) return null;
+  const m = parseInt(date.slice(5,7),10);
+  const months = (m===1)?12:(m-1);
+  return v*12/months;
+}
+function roa(bank,date){
+  const fr = annualize(val('fin_result',bank,date),date), a = val('assets',bank,date);
+  return (fr===null||!a)?null:100*fr/a;
+}
+function roe(bank,date){
+  const fr = annualize(val('fin_result',bank,date),date), e = val('equity',bank,date);
+  return (fr===null||!e||e<=0)?null:100*fr/e;
+}
+function peerGroup(date,n){
+  const base = val('assets',state.bank,date);
+  if(base===null) return [];
+  return banksWith('assets',date)
+    .filter(x=>x[0]!==state.bank)
+    .map(x=>[x[0], Math.abs(Math.log(x[1]/base))])
+    .sort((a,b)=>a[1]-b[1]).slice(0,n).map(x=>x[0]);
+}
+const bankName = id => (DATA.banks[id]&&DATA.banks[id].name)||id;
+const shortName = id => (DATA.banks[id]&&DATA.banks[id].short)||bankName(id);
+const metricOf = k => DATA.metrics.find(m=>m.key===k);
+
+// ---------- tooltip
+const tt = $('tt');
+function showTT(html, ev){
+  tt.innerHTML = html; tt.style.opacity = 1;
+  const r = tt.getBoundingClientRect();
+  let x = ev.clientX + 14, y = ev.clientY + 14;
+  if(x + r.width > innerWidth - 8) x = ev.clientX - r.width - 14;
+  if(y + r.height > innerHeight - 8) y = ev.clientY - r.height - 14;
+  tt.style.left = x+'px'; tt.style.top = y+'px';
+}
+const hideTT = () => tt.style.opacity = 0;
+
+// ---------- tiny SVG chart toolkit
+const SVGNS='http://www.w3.org/2000/svg';
+function el(name, attrs={}, parent){
+  const n=document.createElementNS(SVGNS,name);
+  for(const k in attrs) n.setAttribute(k, attrs[k]);
+  if(parent) parent.appendChild(n);
+  return n;
+}
+function niceTicks(min,max,count){
+  if(min===max){ min-=1; max+=1; }
+  const span=(max-min)/count, mag=Math.pow(10,Math.floor(Math.log10(span)));
+  const step=[1,2,2.5,5,10].map(s=>s*mag).find(s=>s>=span)||10*mag;
+  const t=[]; let v=Math.floor(min/step)*step;
+  while(v<=max+step*0.001){ t.push(+v.toFixed(10)); v+=step; }
+  return t;
+}
+
+function lineChart(host, opts){
+  // opts: {series:[{name,color,values:[]}], dates, yLabel, invertY, fmt, integerTicks}
+  host.innerHTML='';
+  const W=host.clientWidth||640, H=opts.height||260;
+  const M={t:14,r:opts.padRight??54,b:26,l:opts.padLeft??52};
+  const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,height:H},host);
+  const iw=W-M.l-M.r, ih=H-M.t-M.b;
+  const all=opts.series.flatMap(s=>s.values).filter(v=>v!==null&&v!==undefined&&isFinite(v));
+  if(!all.length){ host.innerHTML='<p class="cap">Немає даних.</p>'; return; }
+  let mn=Math.min(...all), mx=Math.max(...all);
+  if(opts.zeroBase) mn=Math.min(0,mn);
+  let ticks=niceTicks(mn,mx,4);
+  if(opts.integerTicks) ticks=[...new Set(ticks.map(Math.round))];
+  const lo=Math.min(...ticks,mn), hi=Math.max(...ticks,mx);
+  const x=i=>M.l+(opts.dates.length===1?iw/2:iw*i/(opts.dates.length-1));
+  const y=v=>{ const t=(v-lo)/(hi-lo||1); return M.t + (opts.invertY? t*ih : (1-t)*ih); };
+
+  ticks.forEach(t=>{
+    el('line',{x1:M.l,x2:M.l+iw,y1:y(t),y2:y(t),class:'gridline'},svg);
+    el('text',{x:M.l-8,y:y(t)+4,class:'tick','text-anchor':'end'},svg).textContent=opts.fmtTick?opts.fmtTick(t):nf(t,0);
+  });
+  el('line',{x1:M.l,x2:M.l+iw,y1:M.t+ih,y2:M.t+ih,class:'axisline'},svg);
+  // підпис осі — місяць і повний рік: 06.2026. Останню дату підписуємо завжди,
+  // а проміжний підпис, що надто близько до неї, пропускаємо — інакше вони налазять.
+  const last=opts.dates.length-1, maxLabels=Math.max(2,Math.floor(iw/72));
+  const stepLbl=Math.max(1,Math.ceil(opts.dates.length/maxLabels));
+  opts.dates.forEach((d,i)=>{
+    const isLast=i===last;
+    if(!isLast && (i%stepLbl!==0 || x(last)-x(i)<58)) return;
+    el('text',{x:x(i),y:H-6,class:'tick','text-anchor':'middle'},svg).textContent=d.slice(5,7)+'.'+d.slice(0,4);
+  });
+
+  // якщо кінцеві підписи ліній налазять один на одного — розсуваємо їх по вертикалі
+  const endPts=opts.series.map(s=>{
+    const li=[...s.values.keys()].filter(i=>s.values[i]!==null&&s.values[i]!==undefined).pop();
+    return li===undefined?null:{li, y:y(s.values[li])};
+  });
+  const labelY=endPts.map(p=>p?p.y:null);
+  const order=[...labelY.keys()].filter(i=>labelY[i]!==null).sort((a,b)=>labelY[a]-labelY[b]);
+  for(let j=1;j<order.length;j++){
+    const prev=labelY[order[j-1]], cur=labelY[order[j]];
+    if(cur-prev<13) labelY[order[j]]=prev+13;
+  }
+
+  opts.series.forEach((s,si)=>{
+    const pts=s.values.map((v,i)=>[x(i),v===null||v===undefined?null:y(v)]);
+    if(s.area){
+      let d='';
+      pts.forEach(([px,py],i)=>{ if(py===null) return; d+=(d?'L':'M')+px+','+py; });
+      if(d){ const last=pts.filter(p=>p[1]!==null);
+        d+=`L${last[last.length-1][0]},${M.t+ih}L${last[0][0]},${M.t+ih}Z`;
+        el('path',{d,fill:s.color,'fill-opacity':0.10,stroke:'none'},svg); }
+    }
+    let d='', pen=false;
+    pts.forEach(([px,py])=>{ if(py===null){pen=false;return;} d+=(pen?'L':'M')+px+','+py; pen=true; });
+    el('path',{d,fill:'none',stroke:s.color,'stroke-width':2,'stroke-linejoin':'round','stroke-linecap':'round'},svg);
+    const li=endPts[si]?endPts[si].li:undefined;
+    if(li!==undefined){
+      el('circle',{cx:x(li),cy:y(s.values[li]),r:4.5,fill:s.color,stroke:'var(--surface-1)','stroke-width':2},svg);
+      if(opts.endLabels!==false){
+        const ly=labelY[si];
+        // якщо підпис зсунуто — тягнемо тонку лінію-виноску від точки до підпису
+        if(Math.abs(ly-y(s.values[li]))>1)
+          el('line',{x1:x(li)+4,y1:y(s.values[li]),x2:x(li)+8,y2:ly,stroke:'var(--axis)','stroke-width':1},svg);
+        const t=el('text',{x:x(li)+10,y:ly+4,class:'dlabel'},svg);
+        t.textContent=opts.fmtLabel?opts.fmtLabel(s.values[li]):nf(s.values[li],0);
+      }
+    }
+  });
+
+  // crosshair + tooltip
+  const cross=el('line',{x1:0,x2:0,y1:M.t,y2:M.t+ih,stroke:'var(--axis)','stroke-width':1,opacity:0},svg);
+  const hit=el('rect',{x:M.l,y:M.t,width:iw,height:ih,fill:'transparent'},svg);
+  hit.addEventListener('mousemove',ev=>{
+    const bb=svg.getBoundingClientRect();
+    const px=(ev.clientX-bb.left)*(W/bb.width);
+    let i=Math.round((px-M.l)/(iw/Math.max(1,opts.dates.length-1)));
+    i=Math.max(0,Math.min(opts.dates.length-1,i));
+    cross.setAttribute('x1',x(i)); cross.setAttribute('x2',x(i)); cross.setAttribute('opacity',1);
+    const rows=opts.series.map(s=>`<div class="tt-row"><span><i style="background:${s.color}"></i>${s.name}</span>
+      <b>${opts.fmtLabel?opts.fmtLabel(s.values[i]):nf(s.values[i],0)}</b></div>`).join('');
+    showTT(`<b>${fmtDate(opts.dates[i])}</b>${rows}`,ev);
+  });
+  hit.addEventListener('mouseleave',()=>{cross.setAttribute('opacity',0);hideTT();});
+}
+
+function barChart(host, opts){
+  // opts:{items:[{label,value,highlight}], fmt, height}
+  host.innerHTML='';
+  const n=opts.items.length, rowH=opts.rowH||20, H=Math.max(120,n*rowH+30);
+  const W=host.clientWidth||600, M={t:6,r:opts.padRight??86,b:20,l:opts.padLeft??176};
+  const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,height:H},host);
+  const iw=W-M.l-M.r;
+  const vals=opts.items.map(d=>d.value).filter(v=>isFinite(v));
+  const mn=Math.min(0,...vals), mx=Math.max(0,...vals);
+  const x=v=>M.l+iw*(v-mn)/((mx-mn)||1);
+  const zero=x(0);
+  el('line',{x1:zero,x2:zero,y1:M.t,y2:M.t+n*rowH,class:'axisline'},svg);
+  opts.items.forEach((d,i)=>{
+    const yc=M.t+i*rowH, bh=Math.min(14,rowH-6);
+    const x0=Math.min(zero,x(d.value)), w=Math.max(1,Math.abs(x(d.value)-zero));
+    const color=d.highlight?S1:(d.negative&&d.value<0?'var(--neutral-mark)':'var(--neutral-mark)');
+    const r=el('rect',{x:x0,y:yc+(rowH-bh)/2,width:w,height:bh,rx:3,
+      fill:d.highlight?S1:'var(--neutral-mark)'},svg);
+    el('text',{x:M.l-10,y:yc+rowH/2+4,class:'dlabel','text-anchor':'end',
+      style:d.highlight?'font-weight:650;fill:var(--text-primary)':''},svg).textContent=d.label;
+    // значення — назовні від стовпчика; якщо не влазить ліворуч, кладемо праворуч від нуля
+    const txt=opts.fmt?opts.fmt(d.value):nf(d.value,0);
+    const approxW=txt.length*6.4;
+    let lx=(d.value<0?x0-6:x0+w+6), anchor=(d.value<0?'end':'start');
+    if(d.value<0 && lx-approxW < M.l+4){ lx=zero+8; anchor='start'; }
+    el('text',{x:lx,y:yc+rowH/2+4,class:'dlabel','text-anchor':anchor,
+      style:d.highlight?'font-weight:650;fill:var(--text-primary)':''},svg).textContent=txt;
+    r.addEventListener('mousemove',ev=>showTT(`<b>${d.full||d.label}</b>
+      <div class="tt-row"><span>${opts.valueName||'Значення'}</span><b>${opts.fmt?opts.fmt(d.value):nf(d.value,0)}</b></div>
+      ${d.extra||''}`,ev));
+    r.addEventListener('mouseleave',hideTT);
+  });
+}
+
+// ---------- rendering
+// Порядок плиток і короткі назви (довгі ріжуться у вузькій картці)
+const TILES=[['assets','Чисті активи'],['equity','Власний капітал'],
+  ['dep_corp','Кошти юросіб і НФУ'],['dep_retail','Кошти фізосіб'],
+  ['loans_total','Кредити клієнтам'],['loans_corp','Кредити юрособам'],
+  ['loans_retail','Кредити фізособам'],['guarantees','Надані гарантії'],
+  ['fin_result','Прибуток після оподаткування']];
+
+function renderTiles(){
+  const host=$('tiles'); host.innerHTML='';
+  const keys=TILES.filter(([k])=>DATA.metrics.some(m=>m.key===k));
+  keys.forEach(([k,shortLbl])=>{
+    const m={...metricOf(k),label:shortLbl}, v=val(k,state.bank,state.date), r=rankOf(k,state.bank,state.date),
+          sh=shareOf(k,state.bank,state.date), mom=growth(k,state.bank,state.date,1), yoy=growth(k,state.bank,state.date,12);
+    const d=document.createElement('div'); d.className='card tile';
+    d.innerHTML=`<div class="lbl">${m.label}</div>
+      <div class="val">${money(v)} <span class="unit">грн</span></div>
+      <div class="meta">
+        <span class="rankbadge">№ ${r?r.rank:'—'} <span style="font-weight:400;color:var(--text-secondary)">з ${r?r.total:'—'}</span></span>
+        <span>частка ${pct(sh,2)}</span>
+        <span>м/м ${delta(mom)}</span>
+        <span>р/р ${delta(yoy)}</span>
+      </div>`;
+    host.appendChild(d);
+  });
+  // ROA: якщо НБУ дає офіційний показник по банку — беремо його, інакше рахуємо самі
+  const official = DATA.series.roa_official ? val('roa_official',state.bank,state.date) : null;
+  const rr = official!==null&&official!==undefined ? official : roa(state.bank,state.date);
+  const re = roe(state.bank,state.date);
+  const rRank = DATA.series.roa_official ? rankOf('roa_official',state.bank,state.date) : null;
+  const d=document.createElement('div'); d.className='card tile';
+  d.innerHTML=`<div class="lbl">Рентабельність ${official!==null&&official!==undefined?'(за НБУ)':'(розрахункова)'}</div>
+    <div class="val">${pct(rr,2)} <span class="unit">ROA</span></div>
+    <div class="meta">${rRank?`<span class="rankbadge">№ ${rRank.rank} <span style="font-weight:400;color:var(--text-secondary)">з ${rRank.total}</span></span>`:''}
+    <span>ROE ${pct(re,1)}</span>
+    <span>система: ROA ${pct(DATA.system.roa?DATA.system.roa[di(state.date)]:null,2)}</span></div>`;
+  $('tiles').appendChild(d);
+}
+
+function renderRank(){
+  const k=state.metric, m=metricOf(k);
+  const vals=DATES.map(d=>{ const r=rankOf(k,state.bank,d); return r?r.rank:null; });
+  const last=rankOf(k,state.bank,state.date);
+  $('rank-cap').textContent=`${shortName(state.bank)} · ${m.label}. Вісь перевернута: вище — краще місце. `
+    + (lowerBetter(k)?'№ 1 = найнижчий рівень серед банків. ':'№ 1 = найбільше значення. ')
+    + (last?`Поточне місце: ${last.rank} з ${last.total}.`:'');
+  lineChart($('chart-rank'),{series:[{name:'Місце',color:S1,values:vals}],dates:DATES,
+    invertY:true,integerTicks:true,fmtTick:t=>'№'+nf(t,0),fmtLabel:v=>v===null?'—':'№'+nf(v,0),height:250});
+  $('tbl-rank').innerHTML=simpleTable(['Звітна дата','Місце',isPct(k)?'Значення, %':'Значення, млн грн'],
+    DATES.map((d,i)=>[fmtDate(d), vals[i]===null?'—':'№'+vals[i], nf(val(k,state.bank,d),2)]));
+}
+
+// Замість частки ринку (у малого банку вона мізерна і нічого не показує) —
+// сама величина показника в часі. Частка ринку лишається на плитці й у таблиці.
+function renderShare(){
+  const k=state.metric, m=metricOf(k);
+  const vals=DATES.map(d=>val(k,state.bank,d));
+  const shares=DATES.map(d=>shareOf(k,state.bank,d));
+  $('share-title').textContent='Динаміка показника';
+  $('share-cap').textContent=`«${m.label}» для ${shortName(state.bank)}`+
+    (isPct(k)?', %.':', млн грн.')+(isPct(k)?'':' Частка ринку — у таблиці під графіком.');
+  lineChart($('chart-share'),{series:[{name:m.label,color:S1,values:vals,area:true}],dates:DATES,
+    zeroBase:true,fmtTick:t=>isPct(k)?nf(t,1)+'%':nf(t,0),
+    fmtLabel:v=>isPct(k)?pct(v,2):money(v),height:250,padRight:74});
+  $('tbl-share').innerHTML=simpleTable(
+    isPct(k)?['Звітна дата','Значення, %']:['Звітна дата','Значення, млн грн','Частка ринку'],
+    DATES.map((d,i)=>isPct(k)?[fmtDate(d), nf(vals[i],2)]
+      :[fmtDate(d), nf(vals[i],1), pct(shares[i],3)]));
+}
+
+function renderIndex(){
+  const k=state.metric, m=metricOf(k);
+  const peers=peerGroup(state.date,state.peern);
+  const mine=DATES.map(d=>val(k,state.bank,d));
+  const peerMed=DATES.map(d=>{
+    const xs=peers.map(b=>val(k,b,d)).filter(v=>v!==null).sort((a,b)=>a-b);
+    if(!xs.length) return null;
+    const h=Math.floor(xs.length/2);
+    return xs.length%2?xs[h]:(xs[h-1]+xs[h])/2;
+  });
+  // для грошових показників «система» — це сума по всіх банках, для відсоткових — медіана
+  const sys=DATES.map(d=>{
+    const a=banksWith(k,d).map(x=>x[1]); if(!a.length) return null;
+    if(!isPct(k)) return a.reduce((s,x)=>s+x,0);
+    a.sort((x,y)=>x-y); const h=Math.floor(a.length/2);
+    return a.length%2?a[h]:(a[h-1]+a[h])/2;
+  });
+  const idx=arr=>{ if(isPct(k)) return arr;
+    const base=arr.find(v=>v!==null&&v!==0); return arr.map(v=>v===null||!base?null:100*v/base); };
+  $('idx-cap').textContent = isPct(k)
+    ? `«${m.label}», самі значення у %. «Система» — медіана по всіх банках.`
+    : `«${m.label}», індекс: перша звітна дата = 100. Одна вісь, тому лінії порівнянні між собою.`;
+  $('idx-legend').innerHTML=[[shortName(state.bank),S1],['Медіана пір-групи',S2],
+      [isPct(k)?'Медіана по системі':'Уся система',S3]]
+    .map(([n,c])=>`<span><i style="background:${c}"></i>${n}</span>`).join('');
+  lineChart($('chart-index'),{dates:DATES,height:300,padRight:120,
+    series:[{name:shortName(state.bank),color:S1,values:idx(mine)},
+            {name:'Медіана пір-групи',color:S2,values:idx(peerMed)},
+            {name:isPct(k)?'Медіана по системі':'Уся система',color:S3,values:idx(sys)}],
+    fmtTick:t=>nf(t,isPct(k)?1:0)+(isPct(k)?'%':''),
+    fmtLabel:v=>v===null?'—':(isPct(k)?pct(v,1):nf(v,0))});
+  $('tbl-index').innerHTML=simpleTable(['Звітна дата',shortName(state.bank),'Медіана пір-групи',
+      isPct(k)?'Медіана по системі':'Система'],
+    DATES.map((d,i)=>[fmtDate(d),nf(mine[i],2),nf(peerMed[i],2),nf(sys[i],2)]));
+}
+
+function renderTop(){
+  const k=state.metric, m=metricOf(k);
+  const arr=banksWith(k,state.date).sort((a,b)=>b[1]-a[1]);
+  const top=arr.slice(0,25);
+  const mineIdx=arr.findIndex(x=>x[0]===state.bank);
+  const items=top.map(([b,v],i)=>({label:`${i+1}. ${shortName(b)}`,full:bankName(b),value:v,
+    highlight:b===state.bank,
+    extra:isPct(k)?'':`<div class="tt-row"><span>Частка</span><b>${pct(shareOf(k,b,state.date),2)}</b></div>`}));
+  if(mineIdx>=25){
+    items.push({label:`${mineIdx+1}. ${shortName(state.bank)}`,full:bankName(state.bank),
+      value:arr[mineIdx][1],highlight:true});
+  }
+  $('top-cap').textContent=`«${m.label}» на ${fmtDate(state.date)}${isPct(k)?', %':', млн грн'}. `+
+    (mineIdx>=25?`${shortName(state.bank)} — поза топ-25, показаний окремим рядком знизу.`:'');
+  barChart($('chart-top'),{items,fmt:v=>isPct(k)?pct(v,2):money(v),valueName:m.label,rowH:19});
+  // повний перелік банків — у таблиці під графіком
+  $('tbl-top').innerHTML=simpleTable(
+    ['Місце','Банк','Група',isPct(k)?'Показник, %':'Показник, млн грн','Частка ринку','р/р'],
+    arr.map(([b,v],i)=>['№'+(i+1), bankName(b), DATA.banks[b].group||'—', nf(v,2),
+      isPct(k)?'—':pct(shareOf(k,b,state.date),3), deltaOf(k,growth(k,b,state.date,12))]),
+    arr.map(([b])=>b===state.bank));
+}
+
+function renderGrowth(){
+  const k=state.metric, m=metricOf(k);
+  const pi=di(state.date)-12;
+  const prevDate=pi>=0?DATA.dates[pi]:null;
+  if(!prevDate){ $('growth-cap').textContent='Замало історії для порівняння рік до року.';
+    $('chart-growth').innerHTML=''; return; }
+  const peers=[state.bank,...peerGroup(state.date,state.peern)];
+  const items=peers.map(b=>({b,g:growth(k,b,state.date,12)})).filter(x=>x.g!==null)
+    .sort((a,b)=>b.g-a.g)
+    .map(x=>({label:shortName(x.b),full:bankName(x.b),value:x.g,highlight:x.b===state.bank,
+      extra:`<div class="tt-row"><span>${fmtDate(prevDate)}</span><b>${fmtVal(k,val(k,x.b,prevDate))}</b></div>`+
+            `<div class="tt-row"><span>${fmtDate(state.date)}</span><b>${fmtVal(k,val(k,x.b,state.date))}</b></div>`}));
+  $('growth-cap').textContent=`Наскільки показник «${m.label}» змінився за 12 місяців: значення на `+
+    `${fmtDate(state.date)} проти ${fmtDate(prevDate)}`+
+    (isPct(k)?', різниця в процентних пунктах.':', різниця у відсотках.')+
+    ` ${shortName(state.bank)} виділений кольором. Наведіть курсор — побачите обидві цифри.`;
+  if(!items.length){ $('chart-growth').innerHTML='<p class="cap">Замало історії для розрахунку р/р.</p>'; return; }
+  barChart($('chart-growth'),{items,fmt:v=>nf(v,1)+(isPct(k)?' п.п.':'%'),valueName:'Зміна р/р',
+    rowH:19,padLeft:150,padRight:78});
+}
+
+function renderPeers(){
+  const k=state.metric;
+  const peers=[state.bank,...peerGroup(state.date,state.peern)];
+  const rows=peers.map(b=>{
+    const r=rankOf(k,b,state.date);
+    return {b, v:val(k,b,state.date), r:r?r.rank:null, sh:shareOf(k,b,state.date),
+      mom:growth(k,b,state.date,1), yoy:growth(k,b,state.date,12),
+      a:val('assets',b,state.date), roa:roa(b,state.date), roe:roe(b,state.date)};
+  }).sort((x,y)=>lowerBetter(k) ? (x.v??Infinity)-(y.v??Infinity) : (y.v??-Infinity)-(x.v??-Infinity));
+  $('peer-cap').textContent=`${state.peern} банків, найближчих до ${shortName(state.bank)} за розміром активів на `+
+    `${fmtDate(state.date)}. Показник: «${metricOf(k).label}».`;
+  const isAssets = k==='assets';
+  const head=['Банк','Місце',isPct(k)?'Показник, %':'Показник, млн грн','м/м','р/р']
+    .concat(isAssets?[]:['Чисті активи, млн грн']).concat(['ROA']);
+  const body=rows.map(x=>({focus:x.b===state.bank, cells:[
+    shortName(x.b), x.r?'№'+x.r:'—', nf(x.v,2), deltaOf(k,x.mom), deltaOf(k,x.yoy)]
+    .concat(isAssets?[]:[nf(x.a,1)]).concat([pct(x.roa,2)])}));
+  $('tbl-peers').innerHTML=simpleTable(head, body.map(b=>b.cells), body.map(b=>b.focus));
+  // прокручуємо так, щоб свій банк опинився посередині видимої частини
+  const wrap=$('tbl-peers'), row=wrap.querySelector('tr.focus');
+  if(row) wrap.scrollTop = Math.max(0, row.offsetTop - wrap.clientHeight/2 + row.offsetHeight/2);
+}
+
+function renderSystem(){
+  const host=$('systiles'); host.innerHTML='';
+  const i=di(state.date);
+  const items=[
+    ['Кількість діючих банків', DATA.system.n_banks?DATA.system.n_banks[i]:null, v=>nf(v,0), ''],
+    ['Активи системи', DATA.system.assets?DATA.system.assets[i]:null, v=>money(v)+' грн', ''],
+    ['Капітал системи', DATA.system.equity?DATA.system.equity[i]:null, v=>money(v)+' грн', ''],
+    ['ROA системи', DATA.system.roa?DATA.system.roa[i]:null, v=>pct(v,2), ''],
+    ['ROE системи', DATA.system.roe?DATA.system.roe[i]:null, v=>pct(v,1), ''],
+  ];
+  items.forEach(([lbl,v,f])=>{
+    if(v===null||v===undefined) return;
+    const d=document.createElement('div'); d.className='card tile';
+    d.innerHTML=`<div class="lbl">${lbl}</div><div class="val">${f(v)}</div>`;
+    host.appendChild(d);
+  });
+  if(!host.children.length) host.innerHTML='<p class="cap">Агрегати системи недоступні у завантажених даних.</p>';
+}
+
+// ===================== додаткові блоки =====================
+const has = f => (DATA.meta.features||[]).includes(f);
+const SER=['var(--series-1)','var(--series-2)','var(--series-3)','var(--series-4)','var(--series-5)','var(--series-6)'];
+
+// --- 1. Водоспад: з чого склався фінансовий результат
+function waterfallItems(){
+  const d=state.date;
+  const plus=[['net_interest','Чистий процентний дохід','Процентний'],
+              ['net_comm','Чистий комісійний дохід','Комісійний'],
+              ['trade_result','Торговий результат','Торговий'],
+              ['other_oper_income','Інші операційні доходи','Інші опер.']];
+  const minus=[['admin_costs','Адміністративні витрати','Адмінвитрати'],
+               ['alloc_prov','Відрахування до резервів','Резерви'],
+               ['tax','Податок на прибуток','Податок']];
+  const items=[];
+  plus.forEach(([k,l,sh])=>{const v=val(k,state.bank,d); if(v!==null) items.push({label:l,short:sh,value:v});});
+  minus.forEach(([k,l,sh])=>{const v=val(k,state.bank,d); if(v!==null) items.push({label:l,short:sh,value:-Math.abs(v)});});
+  const total=val('fin_result',state.bank,d);
+  if(total===null||!items.length) return null;
+  const sum=items.reduce((s,x)=>s+x.value,0);
+  if(Math.abs(total-sum)>Math.abs(total)*0.01) items.push({label:'Інше',short:'Інше',value:total-sum});
+  return {items,total};
+}
+function renderWaterfallInto(host,height){
+  const w=waterfallItems(); if(!w) return false;
+  waterfall(host,w.items,w.total,height); return true;
+}
+function renderWaterfall(){
+  if(!has('waterfall')) return;
+  const w=waterfallItems();
+  if(!w){ $('sec-waterfall').hidden=true; return; }
+  $('wf-cap').textContent=`${shortName(state.bank)}, наростаючим підсумком з початку року станом на `+
+    `${fmtDate(state.date)}, млн грн. Останній стовпчик — підсумок.`;
+  waterfall($('chart-waterfall'),w.items,w.total);
+  $('tbl-wf').innerHTML=simpleTable(['Складова','млн грн'],
+    w.items.map(x=>[x.label,nf(x.value,2)])
+      .concat([['<b>Прибуток після оподаткування</b>','<b>'+nf(w.total,2)+'</b>']]));
+}
+function waterfall(host,items,total,height){
+  host.innerHTML='';
+  const W=host.clientWidth||600, H=height||320, M={t:22,r:10,b:96,l:60};
+  const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,height:H},host);
+  const iw=W-M.l-M.r, ih=H-M.t-M.b;
+  let acc=0; const steps=items.map(x=>{const s={...x,from:acc,to:acc+x.value};acc+=x.value;return s;});
+  const all=[0,...steps.map(s=>s.from),...steps.map(s=>s.to),total];
+  const mn=Math.min(...all), mx=Math.max(...all);
+  const ticks=niceTicks(mn,mx,4), lo=Math.min(...ticks,mn), hi=Math.max(...ticks,mx);
+  const y=v=>M.t+ih*(1-(v-lo)/((hi-lo)||1));
+  ticks.forEach(t=>{ el('line',{x1:M.l,x2:M.l+iw,y1:y(t),y2:y(t),class:'gridline'},svg);
+    el('text',{x:M.l-8,y:y(t)+4,class:'tick','text-anchor':'end'},svg).textContent=nf(t,0); });
+  const n=steps.length+1, band=iw/n, bw=Math.min(24,band-10);
+  const draw=(i,from,to,color,label,value,bold,short)=>{
+    const x0=M.l+band*i+(band-bw)/2, y0=Math.min(y(from),y(to)), h=Math.max(2,Math.abs(y(to)-y(from)));
+    const r=el('rect',{x:x0,y:y0,width:bw,height:h,rx:3,fill:color},svg);
+    el('text',{x:x0+bw/2,y:y0-6,class:'dlabel','text-anchor':'middle',
+      style:bold?'font-weight:650;fill:var(--text-primary)':''},svg).textContent=nf(value,1);
+    const cx=x0+bw/2, cy=M.t+ih+12;
+    const t=el('text',{x:cx,y:cy,class:'tick','text-anchor':'end',
+      transform:`rotate(-45 ${cx} ${cy})`,
+      style:bold?'font-weight:650;fill:var(--text-primary)':''},svg);
+    t.textContent=short||label;
+    r.addEventListener('mousemove',ev=>showTT(`<b>${label}</b><div class="tt-row"><span>Внесок</span><b>${nf(value,2)} млн грн</b></div>`,ev));
+    r.addEventListener('mouseleave',hideTT);
+  };
+  steps.forEach((s,i)=>draw(i,s.from,s.to,s.value>=0?SER[0]:SER[1],s.label,s.value,false,s.short));
+  draw(steps.length,0,total,'var(--text-secondary)','Прибуток після оподаткування',total,true,'ПІДСУМОК');
+  el('line',{x1:M.l,x2:M.l+iw,y1:y(0),y2:y(0),class:'axisline'},svg);
+}
+
+// --- 2. Спред: дохідність активів проти вартості фондування
+function renderSpread(){
+  if(!has('spread')) return;
+  const ay=DATES.map(d=>val('asset_yield',state.bank,d));
+  const fc=DATES.map(d=>val('funding_cost',state.bank,d));
+  const sp=DATES.map(d=>val('spread',state.bank,d));
+  if(!ay.some(v=>v!==null)){ $('card-spread').hidden=true; return; }
+  const i=DATES.indexOf(state.date), cur=i>=0?sp[i]:null;
+  $('spread-cap').textContent=`Скільки банк заробляє на активах і скільки платить за ресурси, % річних. `+
+    `Спред на ${fmtDate(state.date)}: ${pct(cur,2)}.`;
+  $('spread-legend').innerHTML=[['Дохідність активів',SER[0]],['Вартість фондування',SER[1]]]
+    .map(([n,c])=>`<span><i style="background:${c}"></i>${n}</span>`).join('');
+  lineChart($('chart-spread'),{dates:DATES,height:250,padRight:70,
+    series:[{name:'Дохідність активів',color:SER[0],values:ay},
+            {name:'Вартість фондування',color:SER[1],values:fc}],
+    fmtTick:t=>nf(t,1)+'%',fmtLabel:v=>pct(v,1)});
+  $('tbl-spread').innerHTML=simpleTable(['Звітна дата','Дохідність активів','Вартість фондування','Спред'],
+    DATES.map((d,j)=>[fmtDate(d),pct(ay[j],2),pct(fc[j],2),pct(sp[j],2)]));
+}
+
+// --- 5. Хто кого обігнав
+function renderMovers(){
+  if(!has('movers')) return;
+  const k=state.metric, host=$('movers'); host.innerHTML='';
+  $('mov-cap').textContent=`Зміни позицій за показником «${metricOf(k).label}» відносно ${fmtDate(state.date)}.`;
+  [[1,'За місяць'],[12,'За рік']].forEach(([back,title])=>{
+    const i=di(state.date)-back;
+    const card=document.createElement('div'); card.className='card';
+    if(i<0){ card.innerHTML=`<h2 style="font-size:13px">${title}</h2><p class="cap">Замало історії.</p>`;
+      host.appendChild(card); return; }
+    const prevD=DATA.dates[i];
+    const now=rankOf(k,state.bank,state.date), was=rankOf(k,state.bank,prevD);
+    const rk=(b,d)=>{const r=rankOf(k,b,d);return r?r.rank:null;};
+    const passed=[], lost=[];
+    Object.keys(DATA.banks).forEach(b=>{
+      if(b===state.bank) return;
+      const a=rk(b,prevD), c=rk(b,state.date);
+      if(a===null||c===null||!now||!was) return;
+      if(a<was.rank && c>now.rank) passed.push(b);
+      if(a>was.rank && c<now.rank) lost.push(b);
+    });
+    const dr=(was&&now)?was.rank-now.rank:null;
+    const badge=dr===null?'':(dr>0?`<span class="up">▲ піднялись на ${dr}</span>`
+      :dr<0?`<span class="down">▼ опустились на ${-dr}</span>`:'<span class="muted">без змін</span>');
+    const list=(arr,empty)=>arr.length?arr.slice(0,10).map(b=>`<li>${shortName(b)}</li>`).join(''):`<li class="muted">${empty}</li>`;
+    card.innerHTML=`<h2 style="font-size:13px">${title} · ${fmtDate(prevD)} → ${fmtDate(state.date)}</h2>
+      <p class="cap">Місце ${was?'№'+was.rank:'—'} → ${now?'№'+now.rank:'—'} ${badge}</p>
+      <div class="grid two" style="gap:10px">
+        <div><b style="font-size:12px">Обігнали ми (${passed.length})</b><ul style="font-size:12.5px">${list(passed,'нікого')}</ul></div>
+        <div><b style="font-size:12px">Обігнали нас (${lost.length})</b><ul style="font-size:12.5px">${list(lost,'ніхто')}</ul></div>
+      </div>`;
+    host.appendChild(card);
+  });
+}
+
+// --- 3. Структура балансу
+const A_PARTS=[['loans_corp','Кредити юрособам'],['loans_retail','Кредити фізособам'],
+  ['iglb','ОВДП'],['cash','Готівка та НБУ'],['due_banks','Кошти в банках']];
+const L_PARTS=[['dep_retail','Кошти фізосіб'],['dep_corp','Кошти юросіб і НФУ'],
+  ['liab_banks','Кошти банків'],['sub_debt','Субборг'],['equity','Власний капітал']];
+function structRow(parts,bank,date){
+  const base=val('assets',bank,date); if(!base) return null;
+  const vals=parts.map(([k])=>{const v=val(k,bank,date);return v===null?0:Math.abs(v);});
+  const sum=vals.reduce((s,x)=>s+x,0);
+  return vals.concat([Math.max(0,base-sum)]).map(v=>100*v/base);
+}
+function renderStructure(){
+  if(!has('structure')) return;
+  const peers=peerGroup(state.date,state.peern);
+  const med=parts=>{
+    const rows=peers.map(b=>structRow(parts,b,state.date)).filter(Boolean);
+    if(!rows.length) return null;
+    return rows[0].map((_,j)=>{const c=rows.map(r=>r[j]).sort((a,b)=>a-b);const h=Math.floor(c.length/2);
+      return c.length%2?c[h]:(c[h-1]+c[h])/2;});
+  };
+  let any=false;
+  [['a',A_PARTS,'str-cap-a','chart-structure-a','leg-structure-a','активів'],
+   ['l',L_PARTS,'str-cap-l','chart-structure-l','leg-structure-l','пасивів']].forEach(([,parts,cap,chart,leg,word])=>{
+    const rows=[
+      {label:shortName(state.bank),vals:structRow(parts,state.bank,state.date)},
+      {label:'Медіана пір-групи',vals:med(parts)},
+    ].filter(r=>r.vals);
+    if(!rows.length){ $(chart).innerHTML='<p class="cap">Немає даних.</p>'; $(leg).innerHTML=''; return; }
+    any=true;
+    $(cap).textContent=`Структура ${word} у відсотках до чистих активів на ${fmtDate(state.date)}.`;
+    stacked($(chart),rows,parts);
+    // у кожного графіка своя легенда: кольори між активами й пасивами не перетинаються за змістом
+    $(leg).innerHTML=parts.map(([,l],j)=>`<span><i style="background:${SER[j%6]};height:10px;width:10px;border-radius:2px"></i>${l}</span>`)
+      .join('')+`<span><i style="background:var(--neutral-mark);height:10px;width:10px;border-radius:2px"></i>Інше</span>`;
+  });
+  if(!any) $('sec-structure').hidden=true;
+}
+function stacked(host,rows,parts){
+  host.innerHTML='';
+  const W=host.clientWidth||600, rowH=46, H=rows.length*rowH+8, M={l:150,r:12,t:6};
+  const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,height:H},host);
+  const iw=W-M.l-M.r;
+  const labels=parts.map(([,l])=>l).concat(['Інше']);
+  rows.forEach((r,i)=>{
+    const yc=M.t+i*rowH, bh=24; let x0=M.l;
+    r.vals.forEach((v,j)=>{
+      const w=Math.max(0,iw*v/100-2);
+      const color=j<parts.length?SER[j%6]:'var(--neutral-mark)';
+      const rect=el('rect',{x:x0,y:yc,width:w,height:bh,rx:2,fill:color},svg);
+      if(v>=9) el('text',{x:x0+w/2,y:yc+16,class:'dlabel','text-anchor':'middle',
+        style:'fill:#fff;font-weight:600'},svg).textContent=nf(v,0)+'%';
+      rect.addEventListener('mousemove',ev=>showTT(`<b>${labels[j]}</b>
+        <div class="tt-row"><span>${r.label}</span><b>${nf(v,1)}%</b></div>`,ev));
+      rect.addEventListener('mouseleave',hideTT);
+      x0+=w+2;
+    });
+    el('text',{x:M.l-10,y:yc+17,class:'dlabel','text-anchor':'end'},svg).textContent=r.label;
+  });
+}
+
+// --- Ціна ресурсів проти ринкових ставок і облікової ставки НБУ
+const CTX = () => (DATA.context||{});
+function ctxAt(key,d){ const a=CTX()[key]; if(!a) return null; const v=a[di(d)]; return v===undefined?null:v; }
+
+function renderMarket(){
+  if(!has('market')) return;
+  const c=CTX();
+  if(!c.policy_rate && !c.mkt_dep_house){ $('sec-market').hidden=true; return; }
+  const mine=DATES.map(d=>val('funding_cost',state.bank,d));
+  const yield_=DATES.map(d=>val('asset_yield',state.bank,d));
+  const dep=DATES.map(d=>ctxAt('mkt_dep_house',d));
+  const key=DATES.map(d=>ctxAt('policy_rate',d));
+  const i=DATES.indexOf(state.date);
+  const gap=(mine[i]!==null&&dep[i]!==null)?mine[i]-dep[i]:null;
+  $('mkt-cap').textContent=`Ваша вартість фондування проти середньої ставки за новими депозитами `+
+    `населення по системі та облікової ставки НБУ, % річних.`+
+    (gap===null?'':` На ${fmtDate(state.date)} ви залучаєте ресурс `+
+      `${gap>0?'дорожче':'дешевше'} за ринок на ${nf(Math.abs(gap),2)} п.п.`);
+  $('mkt-legend').innerHTML=[['Вартість фондування банку',SER[0]],['Дохідність активів банку',SER[2]],
+    ['Ринок: нові депозити населення',SER[1]],['Облікова ставка НБУ','var(--neutral-mark)']]
+    .map(([n,c2])=>`<span><i style="background:${c2}"></i>${n}</span>`).join('');
+  lineChart($('chart-market'),{dates:DATES,height:260,padRight:64,
+    series:[{name:'Вартість фондування',color:SER[0],values:mine},
+            {name:'Дохідність активів',color:SER[2],values:yield_},
+            {name:'Ринок: депозити населення',color:SER[1],values:dep},
+            {name:'Облікова ставка',color:'var(--neutral-mark)',values:key}],
+    fmtTick:t=>nf(t,0)+'%',fmtLabel:v=>pct(v,1)});
+  $('tbl-market').innerHTML=simpleTable(
+    ['Звітна дата','Вартість фондування','Дохідність активів','Ринок: депозити населення','Облікова ставка'],
+    DATES.map((d,j)=>[fmtDate(d),pct(mine[j],2),pct(yield_[j],2),pct(dep[j],2),pct(key[j],2)]));
+}
+
+// --- Непрацюючі кредити: банк, медіана пір-групи, медіана системи
+// Дві різні метрики в одному графіку — так вимагають самі дані:
+// непрацюючі кредити НБУ почав публікувати по банках лише з 04.2026, а кредитний
+// ризик (очікувані втрати) у тому ж наборі є з 2021 року. Ризик показує ту саму
+// якість портфеля, тільки з повною історією, тому вони йдуть поруч.
+function renderNPL(){
+  if(!has('npl')) return;
+  if(!DATA.series.npl_share && !DATA.series.risk_share){
+    $('sec-market').querySelector('#chart-npl').closest('.card').hidden=true; return; }
+  const peers=peerGroup(state.date,state.peern), i=DATES.indexOf(state.date);
+  const line=k=>({me:DATES.map(d=>val(k,state.bank,d)),
+                  pm:DATES.map(d=>median(peers.map(b=>val(k,b,d)))),
+                  sys:DATES.map(d=>median(banksWith(k,d).map(x=>x[1])))});
+  const R=DATA.series.risk_share?line('risk_share'):null;
+  const N=DATA.series.npl_share?line('npl_share'):null;
+  const rr=R?rankOf('risk_share',state.bank,state.date):null;
+  const rn=N?rankOf('npl_share',state.bank,state.date):null;
+  // початок історії непрацюючих кредитів; згадуємо про нього тільки якщо він пізніший за старт даних
+  let nplFrom=N?DATES.find(d=>banksWith('npl_share',d).length>0):null;
+  if(nplFrom===DATES[0]) nplFrom=null;
+
+  $('npl-cap').textContent=
+    (R&&R.me[i]!==null?`Кредитний ризик (очікувані втрати) до портфеля: у вас ${pct(R.me[i],1)}, `+
+      `медіана пір-групи ${pct(R.pm[i],1)}, по системі ${pct(R.sys[i],1)}`+
+      (rr?`, місце ${rr.rank} з ${rr.total}`:'')+'. ':'')+
+    (N&&N.me[i]!==null?`Непрацюючі кредити: у вас ${pct(N.me[i],1)}, медіана пір-групи ${pct(N.pm[i],1)}`+
+      (rn?`, місце ${rn.rank} з ${rn.total}`:'')+'. ':'')+
+    (nplFrom?`НБУ публікує непрацюючі кредити в розрізі банків лише з ${fmtDate(nplFrom)}, `+
+      `тому довгу історію показує кредитний ризик.`:'');
+
+  const ser=[];
+  if(R){ ser.push({name:'Кредитний ризик — '+shortName(state.bank),color:SER[0],values:R.me});
+         ser.push({name:'Кредитний ризик — медіана пір-групи',color:SER[2],values:R.pm}); }
+  if(N){ ser.push({name:'Непрацюючі — '+shortName(state.bank),color:SER[1],values:N.me});
+         ser.push({name:'Непрацюючі — медіана пір-групи',color:SER[3],values:N.pm}); }
+  $('npl-legend').innerHTML=ser.map(s=>`<span><i style="background:${s.color}"></i>${s.name}</span>`).join('');
+  lineChart($('chart-npl'),{dates:DATES,height:260,padRight:64,zeroBase:true,series:ser,
+    fmtTick:t=>nf(t,0)+'%',fmtLabel:v=>pct(v,1)});
+  $('tbl-npl').innerHTML=simpleTable(
+    ['Звітна дата','Ризик: банк','Ризик: пір-група','Ризик: система',
+     'Непрацюючі: банк','Непрацюючі: пір-група','Непрацюючі: система'],
+    DATES.map((d,j)=>[fmtDate(d),pct(R&&R.me[j],2),pct(R&&R.pm[j],2),pct(R&&R.sys[j],2),
+      pct(N&&N.me[j],2),pct(N&&N.pm[j],2),pct(N&&N.sys[j],2)]));
+}
+
+// --- Валютна структура і приріст, очищений від курсу
+function renderFX(){
+  if(!has('fx')) return;
+  if(!DATA.series.fx_share||!DATA.series.assets_fxadj){ $('sec-fx').hidden=true; return; }
+  const idx=a=>{const base=a.find(v=>v!==null&&v!==0);return a.map(v=>v===null||!base?null:100*v/base);};
+  const nom=idx(DATES.map(d=>val('assets',state.bank,d)));
+  const adj=idx(DATES.map(d=>val('assets_fxadj',state.bank,d)));
+  const shr=DATES.map(d=>val('fx_share',state.bank,d));
+  const i=DATES.indexOf(state.date);
+  const diff=(nom[i]!==null&&adj[i]!==null)?nom[i]-adj[i]:null;
+  $('fx-cap').textContent=`Скільки зростання активів дала робота банку, а скільки — переоцінка валюти. `+
+    `Обидві лінії — індекс, перша дата = 100.`+
+    (diff===null?'':` На ${fmtDate(state.date)} курсова переоцінка додала ${nf(diff,1)} п.п. `+
+      `з ${nf(nom[i]-100,1)} п.п. загального приросту.`)+
+    (shr[i]===null?'':` Частка активів у валюті — ${pct(shr[i],1)}.`);
+  $('fx-legend').innerHTML=[['Активи, як є',SER[0]],['Активи у постійному курсі',SER[1]],
+    ['Частка валютних активів, % (права шкала не використовується)',SER[3]]]
+    .slice(0,2).map(([n,c])=>`<span><i style="background:${c}"></i>${n}</span>`).join('');
+  lineChart($('chart-fx'),{dates:DATES,height:280,padRight:80,
+    series:[{name:'Активи, як є',color:SER[0],values:nom},
+            {name:'У постійному курсі',color:SER[1],values:adj}],
+    fmtTick:t=>nf(t,0),fmtLabel:v=>v===null?'—':nf(v,0)});
+  $('tbl-fx').innerHTML=simpleTable(['Звітна дата','Активи, млн грн','У постійному курсі, млн грн',
+      'Частка валютних активів','Курс USD'],
+    DATES.map((d,j)=>[fmtDate(d),nf(val('assets',state.bank,d),1),nf(val('assets_fxadj',state.bank,d),1),
+      pct(shr[j],2),nf(ctxAt('usd',d),4)]));
+}
+
+// --- Гарантії: портфель банку в часі та місце на ринку.
+// Методика — залишок позабалансового рахунку 9000, як у рейтингах НБУ та АУБ.
+function renderGuar(){
+  if(!has('guar')) return;
+  if(!DATA.series.guarantees){ $('sec-guar').hidden=true; return; }
+  const k='guarantees', d=state.date;
+  const vals=DATES.map(x=>val(k,state.bank,x));
+  const r=rankOf(k,state.bank,d), sh=shareOf(k,state.bank,d);
+  const y=growth(k,state.bank,d,12);
+  $('guar-cap').textContent=`Залишок за позабалансовим рахунком 9000 «Надані гарантії», млн грн. `+
+    (r?`На ${fmtDate(d)} — ${money(val(k,state.bank,d))} грн, місце ${r.rank} з ${r.total}, `+
+       `частка ринку ${pct(sh,2)}${y===null?'':`, за рік ${y>=0?'+':''}${nf(y,1)}%`}.`:'');
+  lineChart($('chart-guar'),{dates:DATES,height:250,padRight:76,zeroBase:true,
+    series:[{name:'Надані гарантії',color:SER[0],values:vals,area:true}],
+    fmtTick:t=>nf(t,0),fmtLabel:v=>money(v)});
+  $('tbl-guar').innerHTML=simpleTable(['Звітна дата','Гарантії, млн грн','Місце','Частка ринку'],
+    DATES.map(x=>{const rr=rankOf(k,state.bank,x);
+      return [fmtDate(x), nf(val(k,state.bank,x),2), rr?'№'+rr.rank:'—', pct(shareOf(k,state.bank,x),3)];}));
+
+  const arr=banksWith(k,d).filter(x=>x[1]>0).sort((a,b)=>b[1]-a[1]);
+  const tot=arr.reduce((s,x)=>s+x[1],0);
+  const mineIdx=arr.findIndex(x=>x[0]===state.bank);
+  const items=arr.slice(0,15).map(([b,v],i)=>({label:`${i+1}. ${shortName(b)}`,full:bankName(b),value:v,
+    highlight:b===state.bank,
+    extra:`<div class="tt-row"><span>Частка ринку</span><b>${pct(100*v/tot,2)}</b></div>`}));
+  if(mineIdx>=15) items.push({label:`${mineIdx+1}. ${shortName(state.bank)}`,full:bankName(state.bank),
+    value:arr[mineIdx][1],highlight:true});
+  $('guar-top-cap').textContent=`Загальний портфель ${arr.length} банків — ${money(tot)} грн. `+
+    (mineIdx>=15?`${shortName(state.bank)} — поза топ-15, показаний окремим рядком знизу.`:'');
+  barChart($('chart-guar-top'),{items,fmt:v=>money(v),valueName:'Гарантії',rowH:20,padLeft:170});
+  $('tbl-guar-top').innerHTML=simpleTable(['Місце','Банк','Гарантії, млн грн','Частка ринку'],
+    arr.map(([b,v],i)=>['№'+(i+1), bankName(b), nf(v,2), pct(100*v/tot,3)]),
+    arr.map(([b])=>b===state.bank));
+}
+
+// --- 7. Порівняння двох банків
+// найближчий за рейтингом сусід: спершу той, хто одразу вище, потім — хто одразу нижче
+function nearestByRank(){
+  const k='assets', me=rankOf(k,state.bank,state.date); if(!me) return null;
+  const arr=banksWith(k,state.date).sort((a,b)=>b[1]-a[1]).map(x=>x[0]);
+  const i=arr.indexOf(state.bank);
+  return (i>0?arr[i-1]:null) || (i>=0&&i<arr.length-1?arr[i+1]:null);
+}
+function renderCompare(){
+  if(!has('compare')) return;
+  const sel=$('rival');
+  if(!state.rivalManual){                     // поки користувач не обрав вручну
+    const n=nearestByRank(); if(n) sel.value=n;
+  }
+  const rival=sel.value; if(!rival) return;
+  const rr=rankOf('assets',rival,state.date), mr=rankOf('assets',state.bank,state.date);
+  $('cmp-cap').textContent=`Типово підставлений найближчий сусід у рейтингу за чистими активами`+
+    (mr&&rr?` — ${shortName(rival)} (№ ${rr.rank} проти вашого № ${mr.rank})`:'')+
+    `. Можна обрати будь-який інший банк.`;
+  const rows=DATA.metrics.map(m=>{
+    const a=val(m.key,state.bank,state.date), b=val(m.key,rival,state.date);
+    const ra=rankOf(m.key,state.bank,state.date), rb=rankOf(m.key,rival,state.date);
+    if(a===null&&b===null) return null;
+    const diff=(a!==null&&b!==null)?(isPct(m.key)?a-b:(b?100*(a-b)/Math.abs(b):null)):null;
+    return [m.label, fmtVal(m.key,a), fmtVal(m.key,b),
+      diff===null?'—':`<span class="${diff>0?'up':'down'}">${diff>0?'+':''}${nf(diff,1)}${isPct(m.key)?' п.п.':'%'}</span>`,
+      ra?'№'+ra.rank:'—', rb?'№'+rb.rank:'—'];
+  }).filter(Boolean);
+  $('tbl-compare').innerHTML=simpleTable(
+    ['Показник',shortName(state.bank),shortName(rival),'Різниця','Наше місце','Його місце'],rows);
+}
+
+// --- 9. Довідка для правління: одна сторінка A4, яку браузер зберігає у PDF.
+const median=a=>{const x=a.filter(v=>v!==null&&v!==undefined&&isFinite(v)).sort((p,q)=>p-q);
+  if(!x.length) return null; const h=Math.floor(x.length/2);
+  return x.length%2?x[h]:(x[h-1]+x[h])/2;};
+const TAGS={good:'#0ca30c',warning:'#fab219',critical:'#d03b3b',neutral:'#898781'};
+const TAGTXT={good:'ДОБРЕ',warning:'УВАГА',critical:'РИЗИК',neutral:'ФАКТ'};
+
+function boardFindings(){
+  const d=state.date, out=[];
+  const peers=peerGroup(d,state.peern);
+  const pmed=(k,fn)=>median(peers.map(b=>fn?fn(b):val(k,b,d)));
+
+  // 1. Рух у рейтингу за рік
+  const i12=di(d)-12, prev=i12>=0?DATA.dates[i12]:null;
+  const rNow=rankOf('assets',state.bank,d), rPrev=prev?rankOf('assets',state.bank,prev):null;
+  if(rNow&&rPrev){
+    const dr=rPrev.rank-rNow.rank;
+    out.push({level:dr>0?'good':dr<0?'warning':'neutral',
+      text: dr===0
+        ? `За рік позиція за чистими активами не змінилась — № ${rNow.rank} з ${rNow.total} банків.`
+        : dr>0
+          ? `За рік банк піднявся з № ${rPrev.rank} на № ${rNow.rank} за чистими активами (усього ${rNow.total} банків).`
+          : `За рік банк опустився з № ${rPrev.rank} на № ${rNow.rank} за чистими активами — це ${-dr} ${-dr===1?'позиція':'позицій'} вниз.`});
+  }
+  // 2. Темп зростання проти пір-групи
+  const g=growth('assets',state.bank,d,12), gp=pmed(null,b=>growth('assets',b,d,12));
+  if(g!==null&&gp!==null){
+    const fast=g-gp;
+    out.push({level:fast>=0?'good':'warning',
+      text:`Чисті активи за рік ${g>=0?'зросли':'скоротились'} на ${nf(Math.abs(g),1)}%, медіана пір-групи — `+
+        `${nf(gp,1)}%. Банк росте ${fast>=0?'швидше':'повільніше'} за схожі банки на ${nf(Math.abs(fast),1)} п.п.`});
+  }
+  // 3. Звідки прийшли ресурси
+  const gi=growth('dep_retail',state.bank,d,12), gc=growth('dep_corp',state.bank,d,12);
+  if(gi!==null||gc!==null){
+    const lead=(gi??-1e9)>=(gc??-1e9)?['фізосіб',gi,'юросіб',gc]:['юросіб',gc,'фізосіб',gi];
+    out.push({level:'neutral',
+      text:`Ресурсна база: кошти ${lead[0]} ${lead[1]>=0?'+':''}${nf(lead[1],1)}% за рік, `+
+        `кошти ${lead[2]} ${lead[3]===null?'—':(lead[3]>=0?'+':'')+nf(lead[3],1)+'%'}. `+
+        `Основний приріст дали кошти ${lead[0]}.`});
+  }
+  // 4. Прибутковість проти системи
+  const fr=val('fin_result',state.bank,d);
+  const roaOwn=(DATA.series.roa_official?val('roa_official',state.bank,d):null) ?? roa(state.bank,d);
+  const sysRoa=DATA.system.roa?DATA.system.roa[di(d)]:null;
+  if(fr!==null){
+    const bad=fr<0||(roaOwn!==null&&sysRoa!==null&&roaOwn<sysRoa);
+    out.push({level:fr<0?'critical':bad?'warning':'good',
+      text:`Фінансовий результат з початку року — ${nf(fr,1)} млн грн${fr<0?' (збиток)':''}. `+
+        `Рентабельність активів ${pct(roaOwn,2)}${sysRoa!==null?` проти ${pct(sysRoa,2)} по системі`:''}.`});
+  }
+  // 4b. Якість портфеля: непрацюючі кредити проти пір-групи
+  if(DATA.series.npl_share){
+    const v=val('npl_share',state.bank,d), m=pmed('npl_share'), r=rankOf('npl_share',state.bank,d);
+    if(v!==null&&m!==null){
+      const worse=v>m;
+      out.push({level:worse?(v-m>5?'critical':'warning'):'good',
+        text:`Непрацюючі кредити — ${pct(v,1)} портфеля проти ${pct(m,1)} у пір-групі`+
+          (r?` (місце ${r.rank} з ${r.total}, № 1 — найнижча частка)`:'')+
+          `. ${worse?'Якість портфеля гірша за схожі банки.':'Якість портфеля краща за схожі банки.'}`});
+    }
+  }
+  // 4c. Скільки приросту дала курсова переоцінка
+  if(DATA.series.assets_fxadj){
+    const i=DATES.indexOf(d), j=DATES.indexOf(d)-12;
+    if(j>=0){
+      const gN=growth('assets',state.bank,d,12);
+      const a1=val('assets_fxadj',state.bank,DATES[j]), a2=val('assets_fxadj',state.bank,d);
+      const gA=(a1&&a2)?100*(a2-a1)/a1:null;
+      if(gN!==null&&gA!==null)
+        out.push({level:'neutral',
+          text:`З ${nf(gN,1)}% річного приросту активів ${nf(gN-gA,1)} п.п. дала курсова переоцінка, `+
+            `${nf(gA,1)} п.п. — власне робота банку.`});
+    }
+  }
+  // 4d. Позабаланс: портфель гарантій
+  if(DATA.series.guarantees){
+    const v=val('guarantees',state.bank,d), r=rankOf('guarantees',state.bank,d),
+          y=growth('guarantees',state.bank,d,12);
+    if(v!==null&&r)
+      out.push({level:y===null?'neutral':(y>=0?'good':'warning'),
+        text:`Портфель наданих гарантій — ${money(v)} грн, місце ${r.rank} з ${r.total} на ринку`+
+          (y===null?'':`, за рік ${y>=0?'+':''}${nf(y,1)}%`)+'.'});
+  }
+  // 5. Найбільше відхилення від пір-групи серед ключових коефіцієнтів
+  const checks=[
+    {k:'cir',label:'витрати до доходів (CIR)',bad:'вище',good:'нижче',lower:true},
+    {k:'capital_ratio',label:'капітал до активів',bad:'нижче',good:'вище',lower:false},
+    {k:'ltd',label:'кредити до коштів клієнтів (LTD)',bad:'вище',good:'нижче',lower:true},
+    {k:'demand_share',label:'частка коштів на вимогу',bad:'вище',good:'нижче',lower:true},
+  ].filter(c=>DATA.metrics.some(m=>m.key===c.k));
+  let best=null;
+  checks.forEach(c=>{
+    const v=val(c.k,state.bank,d), m=pmed(c.k);
+    if(v===null||m===null||!m) return;
+    const diff=v-m;
+    if(!best||Math.abs(diff)>Math.abs(best.diff)) best={...c,v,m,diff};
+  });
+  if(best){
+    const worse=best.lower?best.diff>0:best.diff<0;
+    out.push({level:Math.abs(best.diff)>=10?(worse?'critical':'good'):(worse?'warning':'good'),
+      text:`Показник «${best.label}» — ${pct(best.v,1)} проти ${pct(best.m,1)} у пір-групі, `+
+        `тобто на ${nf(Math.abs(best.diff),1)} п.п. ${best.diff>0?'вище':'нижче'}. `+
+        `${worse?'Варто тримати в полі зору.':'Перевага проти схожих банків.'}`});
+  }
+  return out.slice(0,5);
+}
+
+function printBoard(){
+  document.documentElement.classList.add('printing');
+  window.print();
+  setTimeout(()=>document.documentElement.classList.remove('printing'),800);
+}
+function openBoard(){
+  const d=state.date;
+  $('board-overlay').hidden=false;
+  if(DATA.meta.logo){ $('b-logo').src=DATA.meta.logo; $('b-logo').hidden=false; }
+  $('b-title').textContent=`${bankName(state.bank)} — довідка для Правління`;
+  $('b-sub').textContent=`Позиція на банківському ринку · звітна дата ${fmtDate(d)} · джерело: відкриті дані НБУ · `+
+    `суми в млн грн · сформовано ${DATA.meta.generated.replace('T',' ')}`;
+
+  // шість цифр
+  const rr=(DATA.series.roa_official?val('roa_official',state.bank,d):null) ?? roa(state.bank,d);
+  const six=[
+    ['Чисті активи','assets'],['Власний капітал','equity'],['Кошти клієнтів','dep_total'],
+    ['Кредити клієнтам','loans_total'],['Прибуток з початку року','fin_result'],
+  ].filter(([,k])=>DATA.metrics.some(m=>m.key===k))
+   .map(([l,k])=>{
+     const r=rankOf(k,state.bank,d), y=growth(k,state.bank,d,12);
+     return `<div class="t"><div class="l">${l}</div><div class="v">${money(val(k,state.bank,d))} грн</div>
+       <div class="m">${r?`№ ${r.rank} з ${r.total}`:'—'} · р/р ${y===null?'—':(y>=0?'+':'')+nf(y,1)+'%'}</div></div>`;
+   });
+  six.push(`<div class="t"><div class="l">Рентабельність активів</div><div class="v">${pct(rr,2)}</div>
+    <div class="m">по системі ${pct(DATA.system.roa?DATA.system.roa[di(d)]:null,2)}</div></div>`);
+  $('b-tiles').innerHTML=six.join('');
+
+  // три графіки
+  const rankVals=DATES.map(x=>{const r=rankOf('assets',state.bank,x);return r?r.rank:null;});
+  lineChart($('b-chart1'),{series:[{name:'Місце',color:S1,values:rankVals}],dates:DATES,
+    invertY:true,integerTicks:true,height:190,padRight:44,
+    fmtTick:t=>'№'+nf(t,0),fmtLabel:v=>v===null?'—':'№'+nf(v,0)});
+  const peers=peerGroup(d,state.peern);
+  const mine=DATES.map(x=>val('assets',state.bank,x));
+  const pm=DATES.map(x=>median(peers.map(b=>val('assets',b,x))));
+  const idx=a=>{const base=a.find(v=>v!==null&&v!==0);return a.map(v=>v===null||!base?null:100*v/base);};
+  lineChart($('b-chart2'),{dates:DATES,height:190,padRight:52,
+    series:[{name:shortName(state.bank),color:S1,values:idx(mine)},
+            {name:'Медіана пір-групи',color:SER[1],values:idx(pm)}],
+    fmtTick:t=>nf(t,0),fmtLabel:v=>v===null?'—':nf(v,0)});
+  renderWaterfallInto($('b-chart3'),230);
+
+  // висновки
+  $('b-find').innerHTML=boardFindings().map(f=>
+    `<li><span class="tag" style="background:${TAGS[f.level]}">${TAGTXT[f.level]}</span>${f.text}</li>`).join('');
+  $('b-foot').textContent='Довідку сформовано автоматично з відкритих даних НБУ (набори banksfinrep і basindbank). '+
+    'Пір-група — банки, найближчі за розміром чистих активів. Рентабельність і коефіцієнти — розрахункові.';
+}
+
+function simpleTable(head, rows, focusFlags){
+  return `<table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>`+
+    rows.map((r,i)=>`<tr class="${focusFlags&&focusFlags[i]?'focus':''}">`+
+      r.map(c=>`<td>${c}</td>`).join('')+'</tr>').join('')+'</tbody></table>';
+}
+
+function renderAll(){
+  $('subtitle').textContent=`${bankName(state.bank)} · звітна дата ${fmtDate(state.date)} · `+
+    `дані НБУ, ${fmtDate(DATA.dates[0])}–${fmtDate(DATA.dates[DATA.dates.length-1])}`;
+  renderTiles(); renderRank(); renderShare(); renderIndex(); renderTop(); renderGrowth(); renderPeers(); renderSystem();
+  renderWaterfall(); renderSpread(); renderMovers(); renderStructure(); renderCompare(); renderMarket(); renderNPL(); renderFX(); renderGuar();
+}
+
+// ---------- init
+(function init(){
+  // Показуємо дві різні речі: на яку звітну дату є дані НБУ і коли файл востаннє перезібрали
+  const lastData=DATA.dates[DATA.dates.length-1];
+  $('stamp').textContent=`дані НБУ на ${fmtDate(lastData)} · зібрано ${DATA.meta.generated.slice(0,10).split('-').reverse().join('.')}`;
+  $('stamp').title='Свіжіші дані з’являються після запуску скриптів (локально) або після '+
+    'автоматичного оновлення на GitHub. У браузері достатньо перезавантажити сторінку.';
+  $('demo').hidden=!DATA.meta.mock;
+  if(DATA.meta.logo){ $('logo').src=DATA.meta.logo; $('logo').hidden=false; }
+  // ---- банки: свій банк окремо вгорі, решта — за групами НБУ.
+  // Тією ж функцією наповнюється і список конкурентів у блоці «Порівняння лоб у лоб».
+  const GORDER=['Банки з державною часткою','Банки іноземних банківських груп',
+                'Банки з приватним капіталом','Інші','Не подають звітність (виведені з ринку)'];
+  function fillBankSelect(sel, {withMine=false, exclude=null}={}){
+    sel.innerHTML='';
+    if(withMine){
+      const mine=document.createElement('optgroup'); mine.label='Мій банк';
+      mine.appendChild(new Option('★ '+bankName(DATA.focus), DATA.focus));
+      sel.add(mine);
+    }
+    const byGroup={};
+    Object.keys(DATA.banks).filter(b=>b!==exclude && !(withMine&&b===DATA.focus))
+      .forEach(b=>{ const g=DATA.banks[b].group||'Інші'; (byGroup[g]=byGroup[g]||[]).push(b); });
+    const grank=g=>{const i=GORDER.indexOf(g);return i<0?98:i;};
+    Object.keys(byGroup).sort((a,b)=>grank(a)-grank(b))
+      .forEach(g=>{
+        const og=document.createElement('optgroup'); og.label=`${g} (${byGroup[g].length})`;
+        byGroup[g].sort((a,b)=>bankName(a).localeCompare(bankName(b),'uk'))
+          .forEach(b=>og.appendChild(new Option(bankName(b),b)));
+        sel.add(og);
+      });
+  }
+  const bankSel=$('bank');
+  fillBankSelect(bankSel,{withMine:true});
+  bankSel.value=state.bank;
+
+  const dSel=$('date');
+  [...DATES].reverse().forEach(d=>dSel.add(new Option(fmtDate(d),d)));
+  dSel.value=state.date;
+
+  // ---- показники: згруповані за смислом
+  const mSel=$('metric'), mGroups={};
+  DATA.metrics.forEach(m=>{ (mGroups[m.group||'Інше']=mGroups[m.group||'Інше']||[]).push(m); });
+  Object.keys(mGroups).forEach(g=>{
+    const og=document.createElement('optgroup'); og.label=g;
+    mGroups[g].forEach(m=>og.appendChild(new Option(m.label,m.key)));
+    mSel.add(og);
+  });
+  mSel.value=state.metric;
+  const pSel=$('peern');
+  [6,8,10,12,15,20].forEach(n=>pSel.add(new Option(n+' банків',n)));
+  pSel.value=String(state.peern);
+
+  // ---- додаткові блоки вмикаються прапорцем збірки
+  ['waterfall','spread','movers','structure','compare','market','fx','guar'].forEach(f=>{
+    const sec=$('sec-'+f); if(sec) sec.hidden=!has(f);
+  });
+  if(has('waterfall')||has('spread')) $('sec-waterfall').hidden=false;
+  if(!has('spread')) { const c=$('card-spread'); if(c) c.hidden=true; }
+  if(!has('waterfall')){ const c=$('chart-waterfall').closest('.card'); if(c) c.hidden=true; }
+  if(has('ltm')===false){ /* LTM-показники просто не виводимо у список */ }
+  if(has('period')){
+    const seg=$('wrap-period'); seg.hidden=false;
+    seg.querySelectorAll('button').forEach(btn=>btn.onclick=()=>{
+      state.period=btn.dataset.p;
+      seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===btn));
+      applyPeriod(); rebuildDates(); renderAll();
+    });
+  }
+  if(has('board')){
+    $('export').hidden=false;
+    $('export').onclick=openBoard;
+    $('board-print').onclick=()=>printBoard();
+    $('board-close').onclick=()=>{ $('board-overlay').hidden=true; };
+    // Cmd+P при відкритій довідці друкує саме її
+    addEventListener('beforeprint',()=>{ if(!$('board-overlay').hidden)
+      document.documentElement.classList.add('printing'); });
+    addEventListener('afterprint',()=>document.documentElement.classList.remove('printing'));
+  }
+  if(has('compare')){
+    const rSel=$('rival');
+    fillBankSelect(rSel,{exclude:state.bank}); // ті самі групи НБУ, що й угорі сторінки
+    rSel.onchange=()=>{ state.rivalManual=true; renderCompare(); };
+  }
+  function rebuildDates(){
+    dSel.innerHTML='';
+    [...DATES].reverse().forEach(d=>dSel.add(new Option(fmtDate(d),d)));
+    dSel.value=state.date;
+  }
+
+  bankSel.onchange=e=>{state.bank=e.target.value;renderAll()};
+  dSel.onchange=e=>{state.date=e.target.value;renderAll()};
+  mSel.onchange=e=>{state.metric=e.target.value;renderAll()};
+  pSel.onchange=e=>{state.peern=+e.target.value;renderAll()};
+  $('theme').onclick=()=>{
+    const dark=document.documentElement.dataset.theme==='dark';
+    document.documentElement.dataset.theme=dark?'light':'dark';
+    $('theme').textContent=dark?'Темна тема':'Світла тема';
+    renderAll();
+  };
+  let t; addEventListener('resize',()=>{clearTimeout(t);t=setTimeout(renderAll,180)});
+  renderAll();
+})();
+</script>
+</body>
+</html>
