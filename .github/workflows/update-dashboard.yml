@@ -1,0 +1,55 @@
+name: Оновлення дашборду НБУ
+
+# Коли запускається:
+#  1) за розкладом — 5-го і 20-го числа кожного місяця о 07:00 UTC (10:00 за Києвом)
+#  2) вручну — кнопка "Run workflow" на вкладці Actions
+#  3) при кожній зміні коду в гілці main
+on:
+  schedule:
+    - cron: "0 7 5,20 * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "*.py"
+      - "dashboard_template.html"
+      - ".github/workflows/*.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Кеш сирих відповідей API: перший запуск тягне все (20–40 хв),
+      # наступні — лише нові звітні дати (2–5 хв).
+      - name: Відновити кеш даних НБУ
+        uses: actions/cache@v4
+        with:
+          path: raw
+          key: nbu-raw-${{ github.run_id }}
+          restore-keys: nbu-raw-
+
+      - name: Завантажити дані НБУ
+        run: python3 nbu_fetch.py --start 20210101 --refresh-last 2
+
+      - name: Зібрати дашборд
+        run: python3 build_dashboard.py --bank "оксі" --features all --out index.html
+
+      - name: Опублікувати
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git diff --staged --quiet && echo "змін немає" && exit 0
+          git commit -m "Оновлення даних НБУ: $(date -u +%Y-%m-%d)"
+          git pull --rebase --autostash
+          git push
